@@ -1,0 +1,35 @@
+# C++ build
+build/
+cmake-build-*/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ML artifacts
+*.pth
+*.pt
+*.onnx
+
+# Node / React
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment/secrets
+.env
+.env.*
+!.env.example
+
