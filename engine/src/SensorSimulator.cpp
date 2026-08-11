@@ -10,6 +10,7 @@ SensorSimulator::SensorSimulator(
     : sensorId(sensorId),
       type(type),
       distribution(0.0, 1.0) {
+    generator.seed(std::random_device{}());
 }
 
 SensorReading SensorSimulator::read() {
