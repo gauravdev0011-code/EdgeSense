@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_executable(edgesense
     engine/src/main.cpp
     engine/src/Sensor.cpp
+    engine/src/SensorSimulator.cpp
 )
 
 target_include_directories(edgesense PRIVATE engine/include)
