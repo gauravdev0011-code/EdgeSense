@@ -1,22 +1,23 @@
-#include "Sensor.hpp"
+#include "SensorSimulator.hpp"
 
 #include <iostream>
 
 int main() {
     using namespace edgesense;
 
-    SensorReading reading{
-        1,
-        std::chrono::steady_clock::now(),
+    SensorSimulator sensor(
         "temperature-01",
-        SensorType::Temperature,
-        72.4
-    };
+        SensorType::Temperature
+    );
 
-    std::cout << "EdgeSense engine initialized\n";
-    std::cout << "Sensor: " << reading.sensorId << '\n';
-    std::cout << "Type: " << sensorTypeToString(reading.type) << '\n';
-    std::cout << "Value: " << reading.value << '\n';
+    for (int i = 0; i < 5; ++i) {
+        SensorReading reading = sensor.read();
+
+        std::cout << reading.sensorId
+                  << " = "
+                  << reading.value
+                  << '\n';
+    }
 
     return 0;
 }
