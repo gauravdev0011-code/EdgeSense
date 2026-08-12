@@ -1,6 +1,7 @@
 #include "SensorSimulator.hpp"
 
 #include <iostream>
+#include <thread>
 #include <vector>
 
 int main() {
@@ -17,13 +18,21 @@ int main() {
         SensorSimulator("acceleration-02", SensorType::Acceleration)
     };
 
-    for (auto& sensor : sensors) {
-        SensorReading reading = sensor.read();
+    std::vector<std::thread> threads;
 
-        std::cout << reading.sensorId
-                  << " = "
-                  << reading.value
-                  << '\n';
+    for (auto& sensor : sensors) {
+        threads.emplace_back([&sensor]() {
+            SensorReading reading = sensor.read();
+
+            std::cout << reading.sensorId
+                      << " = "
+                      << reading.value
+                      << '\n';
+        });
+    }
+
+    for (auto& thread : threads) {
+        thread.join();
     }
 
     return 0;
