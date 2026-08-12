@@ -1,3 +1,4 @@
+#include "SensorQueue.hpp"
 #include "SensorSimulator.hpp"
 
 #include <iostream>
@@ -18,21 +19,27 @@ int main() {
         SensorSimulator("acceleration-02", SensorType::Acceleration)
     };
 
+    SensorQueue queue;
     std::vector<std::thread> threads;
 
     for (auto& sensor : sensors) {
-        threads.emplace_back([&sensor]() {
+        threads.emplace_back([&sensor, &queue]() {
             SensorReading reading = sensor.read();
-
-            std::cout << reading.sensorId
-                      << " = "
-                      << reading.value
-                      << '\n';
+            queue.push(reading);
         });
     }
 
     for (auto& thread : threads) {
         thread.join();
+    }
+
+    SensorReading reading;
+
+    while (queue.pop(reading)) {
+        std::cout << reading.sensorId
+                  << " = "
+                  << reading.value
+                  << '\n';
     }
 
     return 0;
