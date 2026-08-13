@@ -1,6 +1,8 @@
 #include "SensorQueue.hpp"
 #include "SensorSimulator.hpp"
+#include "SensorSynchronizer.hpp"
 
+#include <chrono>
 #include <iostream>
 #include <thread>
 #include <vector>
@@ -33,12 +35,31 @@ int main() {
         thread.join();
     }
 
+    std::vector<SensorReading> readings;
     SensorReading reading;
 
     while (queue.pop(reading)) {
-        std::cout << reading.sensorId
+        readings.push_back(reading);
+    }
+
+    SensorSynchronizer synchronizer(
+        std::chrono::milliseconds(100)
+    );
+
+    SensorWindow window = synchronizer.createWindow(readings);
+
+    std::cout << "Total readings: "
+              << readings.size()
+              << '\n';
+
+    std::cout << "Synchronized readings: "
+              << window.readings.size()
+              << '\n';
+
+    for (const auto& item : window.readings) {
+        std::cout << item.sensorId
                   << " = "
-                  << reading.value
+                  << item.value
                   << '\n';
     }
 
