@@ -1,8 +1,8 @@
+#include "FeatureExtractor.hpp"
 #include "SensorQueue.hpp"
 #include "SensorSimulator.hpp"
 #include "SensorSynchronizer.hpp"
 
-#include <chrono>
 #include <iostream>
 #include <thread>
 #include <vector>
@@ -48,6 +48,9 @@ int main() {
 
     SensorWindow window = synchronizer.createWindow(readings);
 
+    FeatureExtractor extractor;
+    SensorFeatures features = extractor.extract(window);
+
     std::cout << "Total readings: "
               << readings.size()
               << '\n';
@@ -56,12 +59,23 @@ int main() {
               << window.readings.size()
               << '\n';
 
-    for (const auto& item : window.readings) {
-        std::cout << item.sensorId
-                  << " = "
-                  << item.value
-                  << '\n';
-    }
+    std::cout << "Features:\n";
+
+    std::cout << "temperature = "
+              << features.temperature
+              << '\n';
+
+    std::cout << "vibration = "
+              << features.vibration
+              << '\n';
+
+    std::cout << "current = "
+              << features.current
+              << '\n';
+
+    std::cout << "acceleration = "
+              << features.acceleration
+              << '\n';
 
     return 0;
 }

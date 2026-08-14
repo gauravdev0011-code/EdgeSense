@@ -12,6 +12,7 @@ add_executable(edgesense
     engine/src/SensorSimulator.cpp
     engine/src/SensorQueue.cpp
     engine/src/SensorSynchronizer.cpp
+    engine/src/FeatureExtractor.cpp
 )
 
 target_include_directories(edgesense PRIVATE
