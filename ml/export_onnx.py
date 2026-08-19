@@ -60,6 +60,7 @@ def main():
         external_data=False
     )
 
+
     # Validate the exported ONNX model.
     onnx_model = onnx.load(ONNX_PATH)
     onnx.checker.check_model(onnx_model)
