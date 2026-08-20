@@ -1,9 +1,11 @@
 #include "FeatureExtractor.hpp"
+#include "InferenceEngine.hpp"
 #include "SensorQueue.hpp"
 #include "SensorSimulator.hpp"
 #include "SensorSynchronizer.hpp"
 
 #include <chrono>
+#include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <thread>
@@ -50,12 +52,31 @@ int main() {
         std::chrono::milliseconds(100)
     );
 
-    SensorWindow window = synchronizer.createWindow(readings);
+    SensorWindow window =
+        synchronizer.createWindow(readings);
 
     FeatureExtractor extractor;
-    SensorFeatures features = extractor.extract(window);
 
-    const auto pipelineEnd = std::chrono::steady_clock::now();
+    SensorFeatures features =
+        extractor.extract(window);
+
+    // Load ONNX model
+    InferenceEngine inferenceEngine(
+        "ml/anomaly_model.onnx"
+    );
+
+    // Run ML inference
+    const float anomalyLogit =
+        inferenceEngine.predict(features);
+
+    const float anomalyProbability =
+        1.0f / (1.0f + std::exp(-anomalyLogit));
+
+    const bool anomalyDetected =
+        anomalyProbability >= 0.5f;
+
+    const auto pipelineEnd =
+        std::chrono::steady_clock::now();
 
     const double pipelineTimeMs =
         std::chrono::duration<double, std::milli>(
@@ -92,6 +113,20 @@ int main() {
 
     std::cout << "Acceleration  : "
               << features.acceleration
+              << '\n';
+
+    std::cout << "\n--- ML Inference ---\n";
+
+    std::cout << "Anomaly logit       : "
+              << anomalyLogit
+              << '\n';
+
+    std::cout << "Anomaly probability : "
+              << anomalyProbability
+              << '\n';
+
+    std::cout << "Anomaly detected    : "
+              << (anomalyDetected ? "YES" : "NO")
               << '\n';
 
     std::cout << "\n--- Pipeline Performance ---\n";
