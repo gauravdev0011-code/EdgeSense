@@ -5,7 +5,8 @@
 namespace edgesense {
 
 WebSocketServer::WebSocketServer(std::uint16_t port)
-    : port(port) {
+    : port(port),
+      server(std::make_unique<Server>()) {
 }
 
 WebSocketServer::~WebSocketServer() {
@@ -40,20 +41,22 @@ void WebSocketServer::stop() {
                 << '\n';
         }
 
-        std::lock_guard<std::mutex> lock(
-            connectionsMutex
-        );
+        {
+            std::lock_guard<std::mutex> lock(connectionsMutex);
 
-        for (const auto& connection : connections) {
-            server->close(
-                connection,
-                websocketpp::close::status::going_away,
-                "Server shutting down",
-                error
-            );
+            for (const auto& handle : connections) {
+                server->close(
+                    handle,
+                    websocketpp::close::status::going_away,
+                    "Server shutting down",
+                    error
+                );
+            }
+
+            connections.clear();
         }
 
-        connections.clear();
+        server->stop();
     }
 
     if (serverThread.joinable()) {
@@ -68,15 +71,13 @@ void WebSocketServer::broadcast(
         return;
     }
 
-    std::lock_guard<std::mutex> lock(
-        connectionsMutex
-    );
+    std::lock_guard<std::mutex> lock(connectionsMutex);
 
-    for (const auto& connection : connections) {
+    for (const auto& handle : connections) {
         websocketpp::lib::error_code error;
 
         server->send(
-            connection,
+            handle,
             message,
             websocketpp::frame::opcode::text,
             error
@@ -89,100 +90,90 @@ void WebSocketServer::broadcast(
                 << '\n';
         }
     }
-}
-
-void WebSocketServer::onOpen(
-    ConnectionHandle handle
-) {
-    std::lock_guard<std::mutex> lock(
-        connectionsMutex
-    );
-
-    connections.insert(handle);
 
     std::cout
-        << "[WebSocket] Client connected. "
-        << "Clients: "
-        << connections.size()
-        << '\n';
-}
-
-void WebSocketServer::onClose(
-    ConnectionHandle handle
-) {
-    std::lock_guard<std::mutex> lock(
-        connectionsMutex
-    );
-
-    connections.erase(handle);
-
-    std::cout
-        << "[WebSocket] Client disconnected. "
-        << "Clients: "
-        << connections.size()
+        << "[WebSocket] Broadcast: "
+        << message
         << '\n';
 }
 
 void WebSocketServer::run() {
-    server =
-        std::make_unique<Server>();
+    try {
+        server->init_asio();
 
-    server->clear_access_channels(
-        websocketpp::log::alevel::all
-    );
+        server->set_open_handler(
+            [this](ConnectionHandle handle) {
+                onOpen(handle);
+            }
+        );
 
-    server->init_asio();
+        server->set_close_handler(
+            [this](ConnectionHandle handle) {
+                onClose(handle);
+            }
+        );
 
-    server->set_open_handler(
-        [this](ConnectionHandle handle) {
-            onOpen(handle);
+        websocketpp::lib::error_code error;
+
+        server->listen(port, error);
+
+        if (error) {
+            std::cerr
+                << "[WebSocket] Listen failed: "
+                << error.message()
+                << '\n';
+
+            running = false;
+            return;
         }
-    );
 
-    server->set_close_handler(
-        [this](ConnectionHandle handle) {
-            onClose(handle);
+        server->start_accept(error);
+
+        if (error) {
+            std::cerr
+                << "[WebSocket] Start accept failed: "
+                << error.message()
+                << '\n';
+
+            running = false;
+            return;
         }
-    );
 
-    websocketpp::lib::error_code error;
-
-    server->listen(
-        websocketpp::lib::asio::ip::tcp::v4(),
-        port,
-        error
-    );
-
-    if (error) {
-        std::cerr
-            << "[WebSocket] Listen failed: "
-            << error.message()
+        std::cout
+            << "[WebSocket] Server listening on port "
+            << port
             << '\n';
 
-        running = false;
-        return;
+        server->run();
     }
-
-    server->start_accept(error);
-
-    if (error) {
+    catch (const std::exception& error) {
         std::cerr
-            << "[WebSocket] Accept failed: "
-            << error.message()
+            << "[WebSocket] Server exception: "
+            << error.what()
             << '\n';
 
         running = false;
-        return;
+    }
+}
+
+void WebSocketServer::onOpen(ConnectionHandle handle) {
+    {
+        std::lock_guard<std::mutex> lock(connectionsMutex);
+        connections.insert(handle);
     }
 
     std::cout
-        << "[WebSocket] Server listening on port "
-        << port
-        << '\n';
+        << "[WebSocket] Client connected\n";
+}
 
-    server->run();
+void WebSocketServer::onClose(ConnectionHandle handle) {
+    {
+        std::lock_guard<std::mutex> lock(connectionsMutex);
+        connections.erase(handle);
+    }
 
-    server.reset();
+    std::cout
+        << "[WebSocket] Client disconnected\n";
 }
 
 } // namespace edgesense

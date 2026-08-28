@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 project(EdgeSense LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -33,6 +33,10 @@ target_link_directories(edgesense PRIVATE
 
 target_link_libraries(edgesense PRIVATE
     onnxruntime
+)
+
+target_compile_definitions(edgesense PRIVATE
+    ASIO_STANDALONE
 )
 
 target_compile_options(edgesense PRIVATE
