@@ -18,10 +18,12 @@ add_executable(edgesense
     engine/src/SensorSynchronizer.cpp
     engine/src/FeatureExtractor.cpp
     engine/src/InferenceEngine.cpp
+    server/src/WebSocketServer.cpp
 )
 
 target_include_directories(edgesense PRIVATE
     engine/include
+    server/include
     ${ONNXRUNTIME_DIR}/include
 )
 
