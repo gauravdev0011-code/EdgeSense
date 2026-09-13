@@ -1,13 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import "./App.css";
 
 const initialTelemetry = {
@@ -21,261 +13,160 @@ const initialTelemetry = {
   processing_time_ms: 0,
 };
 
+const streams = [
+  ["TEMP-01", "Temperature"], ["VIB-02", "Vibration"],
+  ["CURR-03", "Current"], ["ACC-04", "Acceleration"],
+  ["TEMP-05", "Temperature"], ["VIB-06", "Vibration"],
+  ["CURR-07", "Current"], ["ACC-08", "Acceleration"],
+];
+
 function App() {
   const [telemetry, setTelemetry] = useState(initialTelemetry);
   const [history, setHistory] = useState([]);
   const [connected, setConnected] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState(null);
 
   useEffect(() => {
-    const socket = new WebSocket("ws://localhost:9002");
+    let socket;
+    let timer;
+    let disposed = false;
 
-    socket.onopen = () => setConnected(true);
-
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-
-        setTelemetry(data);
-
-        setHistory((previous) => {
-          const next = [
-            ...previous,
-            {
-              time: new Date().toLocaleTimeString([], {
-                minute: "2-digit",
-                second: "2-digit",
-              }),
-              temperature: data.temperature,
-              vibration: data.vibration,
-              current: data.current,
-              acceleration: data.acceleration,
-            },
-          ];
-
-          return next.slice(-40);
-        });
-      } catch {
-        console.error("Invalid telemetry message");
-      }
+    const connect = () => {
+      if (disposed) return;
+      socket = new WebSocket("ws://localhost:9002");
+      socket.onopen = () => setConnected(true);
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          setTelemetry(data);
+          setLastUpdate(new Date());
+          setHistory((previous) => [...previous, {
+            time: new Date().toLocaleTimeString([], { minute: "2-digit", second: "2-digit" }),
+            temperature: Number(data.temperature) || 0,
+            vibration: Number(data.vibration) || 0,
+            current: Number(data.current) || 0,
+            acceleration: Number(data.acceleration) || 0,
+          }].slice(-48));
+        } catch {
+          console.error("Invalid telemetry message");
+        }
+      };
+      socket.onclose = () => {
+        setConnected(false);
+        if (!disposed) timer = window.setTimeout(connect, 2000);
+      };
+      socket.onerror = () => setConnected(false);
     };
 
-    socket.onclose = () => setConnected(false);
-    socket.onerror = () => setConnected(false);
-
-    return () => socket.close();
+    connect();
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+      socket?.close();
+    };
   }, []);
 
-  const probability = telemetry.anomaly_probability;
-  const status = telemetry.anomaly_detected ? "ANOMALY" : "NORMAL";
+  const probability = Math.max(0, Math.min(1, Number(telemetry.anomaly_probability) || 0));
+  const latency = Number(telemetry.processing_time_ms) || 0;
+  const anomaly = Boolean(telemetry.anomaly_detected);
+  const maxLatency = history.length ? Math.max(...history.map(() => latency)) : latency;
 
   return (
-    <main className="dashboard">
-      <header className="header">
-        <div>
-          <p className="eyebrow">EDGE AI MONITORING</p>
-          <h1>EdgeSense</h1>
-          <p className="subtitle">
-            Real-time sensor fusion and anomaly detection
-          </p>
-        </div>
+    <main className="app-shell">
+      <div className="ambient ambient-one" /><div className="ambient ambient-two" />
 
-        <div className={`connection ${connected ? "online" : "offline"}`}>
-          <span />
-          {connected ? "CONNECTED" : "OFFLINE"}
+      <header className="topbar">
+        <div className="brand-block">
+          <div className="brand-mark">ES</div>
+          <div><div className="brand-row"><h1>EdgeSense</h1><span className="version">EDGE AI</span></div><p>Real-time sensor fusion &amp; anomaly detection</p></div>
+        </div>
+        <div className="system-state">
+          <span className={`state-dot ${connected ? "online" : "offline"}`} />
+          <div><strong>{connected ? "LIVE PIPELINE" : "WAITING FOR PIPELINE"}</strong><span>{connected ? "WebSocket :9002" : "Reconnecting automatically"}</span></div>
         </div>
       </header>
 
-      <section
-        className={`status-card ${
-          telemetry.anomaly_detected ? "alert" : ""
-        }`}
-      >
-        <div>
-          <p className="label">SYSTEM STATUS</p>
-          <h2>{status}</h2>
-          <p className="muted">
-            Anomaly probability{" "}
-            <strong>{probability.toFixed(3)}</strong>
-          </p>
-        </div>
-
-        <div className="score">
-          {(probability * 100).toFixed(1)}%
-        </div>
-      </section>
-
-      <section className="metrics">
-        <Metric title="Temperature" value={telemetry.temperature} />
-        <Metric title="Vibration" value={telemetry.vibration} />
-        <Metric title="Current" value={telemetry.current} />
-        <Metric title="Acceleration" value={telemetry.acceleration} />
-      </section>
-
-      <section className="content-grid">
-        <article className="panel telemetry-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">SENSOR TELEMETRY</p>
-              <h3>Live sensor streams</h3>
-            </div>
-
-            <span className="live">
-              <span />
-              LIVE
-            </span>
+      <section className="hero-grid">
+        <article className={`hero-card ${anomaly ? "danger" : "healthy"}`}>
+          <div className="hero-copy">
+            <div className="section-kicker">MODEL DECISION</div>
+            <div className="hero-status-row"><span className={`status-icon ${anomaly ? "danger" : "healthy"}`}>{anomaly ? "!" : "✓"}</span><h2>{anomaly ? "ANOMALY DETECTED" : "SYSTEM NORMAL"}</h2></div>
+            <p>ONNX Runtime is evaluating the synchronized sensor window in real time.</p>
           </div>
-
-          <div className="chart">
-            {history.length > 1 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={history}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" />
-                  <YAxis />
-                  <Tooltip />
-
-                  <Line
-                    type="monotone"
-                    dataKey="temperature"
-                    stroke="#60a5fa"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-
-                  <Line
-                    type="monotone"
-                    dataKey="vibration"
-                    stroke="#a78bfa"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-
-                  <Line
-                    type="monotone"
-                    dataKey="current"
-                    stroke="#34d399"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-
-                  <Line
-                    type="monotone"
-                    dataKey="acceleration"
-                    stroke="#fbbf24"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="chart-empty">
-                Waiting for sensor history...
-              </div>
-            )}
-          </div>
-
-          <div className="legend">
-            <span>
-              <i className="temperature" />
-              Temperature
-            </span>
-
-            <span>
-              <i className="vibration" />
-              Vibration
-            </span>
-
-            <span>
-              <i className="current" />
-              Current
-            </span>
-
-            <span>
-              <i className="acceleration" />
-              Acceleration
-            </span>
+          <div className="confidence">
+            <span>ANOMALY PROBABILITY</span><strong>{(probability * 100).toFixed(1)}<small>%</small></strong>
+            <div className="confidence-track"><div style={{ width: `${probability * 100}%` }} /></div>
           </div>
         </article>
 
-        <article className="panel inference-panel">
-          <p className="eyebrow">ML INFERENCE</p>
-          <h3>ONNX anomaly detection</h3>
-
-          <div className="inference-row">
-            <span>Anomaly logit</span>
-            <strong>
-              {telemetry.anomaly_logit.toFixed(3)}
-            </strong>
-          </div>
-
-          <div className="inference-row">
-            <span>Probability</span>
-            <strong>
-              {(probability * 100).toFixed(1)}%
-            </strong>
-          </div>
-
-          <div
-            className={`detection ${
-              telemetry.anomaly_detected
-                ? "detected"
-                : "normal"
-            }`}
-          >
-            <strong>{status}</strong>
-
-            <span>
-              {telemetry.anomaly_detected
-                ? "Model flagged the current sensor window."
-                : "Current sensor window is within normal range."}
-            </span>
-          </div>
+        <article className="architecture-card">
+          <div className="section-kicker">PIPELINE</div>
+          <div className="pipeline-flow"><PipelineNode label="8 STREAMS" detail="C++20" /><i>→</i><PipelineNode label="FUSION" detail="Buffered" /><i>→</i><PipelineNode label="INFERENCE" detail="ONNX" /><i>→</i><PipelineNode label="TELEMETRY" detail="WebSocket" /></div>
+          <div className="architecture-footer"><span>React dashboard</span><span>•</span><span>Live monitoring</span></div>
         </article>
       </section>
 
-      <section className="performance">
-        <Stat
-          label="PROCESSING TIME"
-          value={`${telemetry.processing_time_ms.toFixed(1)} ms`}
-        />
-
-        <Stat
-          label="SENSOR STREAMS"
-          value="8"
-        />
-
-        <Stat
-          label="HISTORY BUFFER"
-          value={`${history.length}/40`}
-        />
+      <section className="metric-grid">
+        <Metric label="TEMPERATURE" value={telemetry.temperature} unit="°C" />
+        <Metric label="VIBRATION" value={telemetry.vibration} unit="g" />
+        <Metric label="CURRENT" value={telemetry.current} unit="A" />
+        <Metric label="ACCELERATION" value={telemetry.acceleration} unit="g" />
+        <Metric label="INFERENCE" value={latency} unit="ms" accent="purple" />
       </section>
 
-      <footer>
-        EdgeSense • C++20 • ONNX Runtime • WebSockets
-      </footer>
+      <section className="dashboard-grid">
+        <article className="panel chart-panel">
+          <PanelHeader kicker="LIVE TELEMETRY" title="Sensor signal history" meta={history.length ? `${history.length} samples buffered` : "Awaiting data"} />
+          <div className="chart-wrap">
+            {history.length > 1 ? <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={history} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                <defs><linearGradient id="signalFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#5ee7ff" stopOpacity={0.24} /><stop offset="100%" stopColor="#5ee7ff" stopOpacity={0} /></linearGradient></defs>
+                <CartesianGrid stroke="#1c2940" vertical={false} /><XAxis dataKey="time" tickLine={false} axisLine={false} tick={{ fill: "#61718d", fontSize: 10 }} /><YAxis tickLine={false} axisLine={false} tick={{ fill: "#61718d", fontSize: 10 }} />
+                <Tooltip contentStyle={{ background: "#0d1525", border: "1px solid #24334e", borderRadius: 10, color: "#eaf2ff" }} />
+                <Area type="monotone" dataKey="temperature" stroke="#5ee7ff" fill="url(#signalFill)" strokeWidth={2} dot={false} name="Temperature" />
+                <Area type="monotone" dataKey="vibration" stroke="#a78bfa" fill="none" strokeWidth={1.6} dot={false} name="Vibration" />
+                <Area type="monotone" dataKey="current" stroke="#55e6a5" fill="none" strokeWidth={1.6} dot={false} name="Current" />
+                <Area type="monotone" dataKey="acceleration" stroke="#f5c451" fill="none" strokeWidth={1.6} dot={false} name="Acceleration" />
+              </AreaChart>
+            </ResponsiveContainer> : <div className="empty-state"><div className="pulse-ring" /><strong>Waiting for telemetry</strong><span>Start the C++ pipeline to stream sensor data.</span></div>}
+          </div>
+          <div className="chart-legend"><Legend color="#5ee7ff" label="Temperature" /><Legend color="#a78bfa" label="Vibration" /><Legend color="#55e6a5" label="Current" /><Legend color="#f5c451" label="Acceleration" /></div>
+        </article>
+
+        <article className="panel inference-card">
+          <PanelHeader kicker="ML INFERENCE" title="Anomaly model" meta="PyTorch → ONNX Runtime" />
+          <div className="model-score"><div className="score-ring" style={{ "--score": `${probability * 100}%` }}><div><strong>{(probability * 100).toFixed(0)}%</strong><span>confidence</span></div></div></div>
+          <Detail label="Logit" value={(Number(telemetry.anomaly_logit) || 0).toFixed(3)} />
+          <Detail label="Inference latency" value={`${latency.toFixed(2)} ms`} />
+          <Detail label="Peak observed latency" value={`${maxLatency.toFixed(2)} ms`} />
+          <Detail label="Input features" value="4 sensor features" />
+        </article>
+      </section>
+
+      <section className="lower-grid">
+        <article className="panel stream-panel">
+          <PanelHeader kicker="SENSOR FABRIC" title="8-stream workload" meta="Concurrent simulated inputs" />
+          <div className="stream-grid">{streams.map(([name, type]) => <div className="stream" key={name}><span className={`stream-indicator ${connected ? "active" : ""}`} /><div><strong>{name}</strong><span>{type}</span></div><b>{connected ? "ACTIVE" : "IDLE"}</b></div>)}</div>
+        </article>
+        <article className="panel health-panel">
+          <PanelHeader kicker="RUNTIME HEALTH" title="Pipeline status" meta={lastUpdate ? `Updated ${lastUpdate.toLocaleTimeString()}` : "No telemetry yet"} />
+          <Health label="WebSocket transport" value={connected ? "Connected" : "Offline"} healthy={connected} />
+          <Health label="8-stream ingestion" value={connected ? "Running" : "Waiting"} healthy={connected} />
+          <Health label="ML inference" value={connected ? "Online" : "Standby"} healthy={connected} />
+          <Health label="Anomaly state" value={anomaly ? "Alert" : "Normal"} healthy={!anomaly} />
+        </article>
+      </section>
+
+      <footer className="footer"><span>EDGESENSE</span><span>•</span><span>C++20</span><span>•</span><span>PyTorch / ONNX Runtime</span><span>•</span><span>WebSocket</span><span>•</span><span>React</span></footer>
     </main>
   );
 }
 
-function Metric({ title, value }) {
-  return (
-    <article className="metric">
-      <p>{title}</p>
-
-      <strong>{value.toFixed(3)}</strong>
-
-      <span>Normalized sensor value</span>
-    </article>
-  );
-}
-
-function Stat({ label, value }) {
-  return (
-    <div>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
+function Metric({ label, value, unit, accent = "cyan" }) { const n = Number(value) || 0; return <article className={`metric-card ${accent}`}><span>{label}</span><strong>{n.toFixed(2)}<small>{unit}</small></strong><div className="metric-line" /></article>; }
+function PipelineNode({ label, detail }) { return <div className="pipeline-node"><strong>{label}</strong><span>{detail}</span></div>; }
+function PanelHeader({ kicker, title, meta }) { return <div className="panel-header"><div><div className="section-kicker">{kicker}</div><h3>{title}</h3></div><span className="panel-meta">{meta}</span></div>; }
+function Legend({ color, label }) { return <span className="legend-item"><i style={{ background: color }} />{label}</span>; }
+function Detail({ label, value }) { return <div className="detail-row"><span>{label}</span><strong>{value}</strong></div>; }
+function Health({ label, value, healthy }) { return <div className="health-row"><div><span className={`health-dot ${healthy ? "healthy" : "idle"}`} /><strong>{label}</strong></div><span className={healthy ? "health-value" : "idle-value"}>{value}</span></div>; }
 
 export default App;
