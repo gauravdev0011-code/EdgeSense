@@ -16,7 +16,7 @@ from sklearn.metrics import (
 ML_DIR = Path(__file__).resolve().parent
 DATA_PATH = ML_DIR / "data" / "sensor_data.csv"
 MODEL_PATH = ML_DIR / "anomaly_model.pt"
-SCALER_PATH = ML_DIR / "scaler.pt"
+SCALER_TEXT_PATH = ML_DIR / "scaler.txt"
 FEATURES = ["temperature", "vibration", "current", "acceleration"]
 
 
@@ -35,19 +35,27 @@ class AnomalyDetector(nn.Module):
         return self.network(x)
 
 
+def load_scaler():
+    lines = SCALER_TEXT_PATH.read_text(encoding="utf-8").splitlines()
+    if len(lines) != 2:
+        raise ValueError("scaler.txt must contain one line of means and one line of scales")
+
+    mean = [float(value) for value in lines[0].split()]
+    scale = [float(value) for value in lines[1].split()]
+
+    if len(mean) != len(FEATURES) or len(scale) != len(FEATURES):
+        raise ValueError("scaler.txt does not contain four feature parameters")
+    if any(value == 0.0 for value in scale):
+        raise ValueError("scaler.txt contains a zero scale")
+
+    return mean, scale
+
+
 def main():
     data = pd.read_csv(DATA_PATH)
-    scaler_state = torch.load(SCALER_PATH, map_location="cpu")
+    mean, scale = load_scaler()
 
-    if scaler_state["features"] != FEATURES:
-        raise ValueError("Saved scaler feature order does not match the model input contract")
-
-    X = scaler_state["scale"]
-    if len(X) != len(FEATURES):
-        raise ValueError("Saved scaler has an unexpected number of features")
-
-    raw_features = data[FEATURES].values
-    normalized = (raw_features - scaler_state["mean"]) / scaler_state["scale"]
+    normalized = (data[FEATURES].values - mean) / scale
 
     model = AnomalyDetector()
     model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
