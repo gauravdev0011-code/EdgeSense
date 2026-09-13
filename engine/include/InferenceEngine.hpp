@@ -4,13 +4,17 @@
 
 #include <onnxruntime_cxx_api.h>
 
+#include <array>
 #include <string>
 
 namespace edgesense {
 
 class InferenceEngine {
 public:
-    explicit InferenceEngine(const std::string& modelPath);
+    InferenceEngine(
+        const std::string& modelPath,
+        const std::string& scalerPath
+    );
 
     float predict(const SensorFeatures& features);
 
@@ -21,6 +25,9 @@ private:
 
     std::string inputName;
     std::string outputName;
+
+    std::array<float, 4> mean{};
+    std::array<float, 4> scale{};
 };
 
 } // namespace edgesense
