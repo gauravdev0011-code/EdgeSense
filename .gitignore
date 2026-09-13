@@ -12,6 +12,7 @@ venv/
 *.pth
 *.pt
 *.onnx
+ml/scaler.txt
 
 # Node / React
 frontend/node_modules/
@@ -32,4 +33,3 @@ Thumbs.db
 .env
 .env.*
 !.env.example
-
