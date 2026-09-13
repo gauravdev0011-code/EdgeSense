@@ -9,11 +9,15 @@
 #include <chrono>
 #include <cmath>
 #include <csignal>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <thread>
 #include <vector>
+
+#include <sys/resource.h>
 
 namespace {
 
@@ -21,6 +25,35 @@ std::atomic<bool> running{true};
 
 void handleSignal(int) {
     running = false;
+}
+
+struct ProcessResources {
+    double cpuSeconds{0.0};
+    double memoryMb{0.0};
+};
+
+ProcessResources readProcessResources() {
+    rusage usage{};
+    getrusage(RUSAGE_SELF, &usage);
+
+    const double cpuSeconds =
+        static_cast<double>(usage.ru_utime.tv_sec) +
+        static_cast<double>(usage.ru_utime.tv_usec) / 1'000'000.0 +
+        static_cast<double>(usage.ru_stime.tv_sec) +
+        static_cast<double>(usage.ru_stime.tv_usec) / 1'000'000.0;
+
+    long memoryKb = 0;
+    std::ifstream status("/proc/self/status");
+    std::string key;
+    while (status >> key) {
+        if (key == "VmRSS:") {
+            status >> memoryKb;
+            break;
+        }
+        status.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    }
+
+    return {cpuSeconds, static_cast<double>(memoryKb) / 1024.0};
 }
 
 } // namespace
@@ -64,6 +97,8 @@ int main() {
         << "[EdgeSense] Press Ctrl+C to stop.\n\n";
 
     std::uint64_t cycle = 0;
+    ProcessResources previousResources = readProcessResources();
+    auto previousResourceTime = std::chrono::steady_clock::now();
 
     while (running) {
         ++cycle;
@@ -103,6 +138,17 @@ int main() {
                 pipelineEnd - pipelineStart
             ).count();
 
+        const ProcessResources currentResources = readProcessResources();
+        const auto resourceTime = std::chrono::steady_clock::now();
+        const double wallSeconds =
+            std::chrono::duration<double>(resourceTime - previousResourceTime).count();
+        const double cpuUtilizationPercent = wallSeconds > 0.0
+            ? ((currentResources.cpuSeconds - previousResources.cpuSeconds) /
+               wallSeconds) * 100.0
+            : 0.0;
+        previousResources = currentResources;
+        previousResourceTime = resourceTime;
+
         std::cout << std::fixed << std::setprecision(3)
                   << "\nTelemetry Cycle: " << cycle << '\n'
                   << "Total readings       : " << readings.size() << '\n'
@@ -114,7 +160,9 @@ int main() {
                   << "Anomaly logit        : " << anomalyLogit << '\n'
                   << "Anomaly probability  : " << anomalyProbability << '\n'
                   << "Anomaly detected     : " << (anomalyDetected ? "YES" : "NO") << '\n'
-                  << "Processing time      : " << pipelineTimeMs << " ms\n";
+                  << "Processing time      : " << pipelineTimeMs << " ms\n"
+                  << "CPU utilization      : " << cpuUtilizationPercent << " %\n"
+                  << "Memory RSS           : " << currentResources.memoryMb << " MB\n";
 
         std::ostringstream telemetry;
         telemetry << std::fixed << std::setprecision(3)
@@ -128,6 +176,8 @@ int main() {
                   << ",\"anomaly_probability\":" << anomalyProbability
                   << ",\"anomaly_detected\":" << (anomalyDetected ? "true" : "false")
                   << ",\"processing_time_ms\":" << pipelineTimeMs
+                  << ",\"cpu_utilization_percent\":" << cpuUtilizationPercent
+                  << ",\"memory_mb\":" << currentResources.memoryMb
                   << "}";
 
         webSocketServer.broadcast(telemetry.str());
