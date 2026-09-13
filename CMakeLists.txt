@@ -2,9 +2,13 @@ cmake_minimum_required(VERSION 3.28)
 
 project(EdgeSense LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+find_package(Threads REQUIRED)
+find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED)
+find_path(WEBSOCKETPP_INCLUDE_DIR websocketpp/server.hpp REQUIRED)
 
 set(ONNXRUNTIME_DIR
     ${CMAKE_SOURCE_DIR}/third_party/onnxruntime-linux-x64-1.29.0
@@ -24,6 +28,8 @@ add_executable(edgesense
 target_include_directories(edgesense PRIVATE
     engine/include
     server/include
+    ${ASIO_INCLUDE_DIR}
+    ${WEBSOCKETPP_INCLUDE_DIR}
     ${ONNXRUNTIME_DIR}/include
 )
 
@@ -33,6 +39,7 @@ target_link_directories(edgesense PRIVATE
 
 target_link_libraries(edgesense PRIVATE
     onnxruntime
+    Threads::Threads
 )
 
 target_compile_definitions(edgesense PRIVATE
