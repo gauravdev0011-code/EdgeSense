@@ -3,12 +3,11 @@ from pathlib import Path
 
 import numpy as np
 import onnxruntime as ort
-import torch
 
 
 ML_DIR = Path(__file__).resolve().parent
 ONNX_PATH = ML_DIR / "anomaly_model.onnx"
-SCALER_PATH = ML_DIR / "scaler.pt"
+SCALER_TEXT_PATH = ML_DIR / "scaler.txt"
 
 NUM_SENSORS = 8
 NUM_WARMUP_RUNS = 100
@@ -19,6 +18,17 @@ def percentile(values, percentile_value):
     return np.percentile(values, percentile_value)
 
 
+def load_scaler():
+    lines = SCALER_TEXT_PATH.read_text(encoding="utf-8").splitlines()
+    if len(lines) != 2:
+        raise ValueError("scaler.txt must contain one line of means and one line of scales")
+    mean = np.asarray([float(value) for value in lines[0].split()], dtype=np.float32)
+    scale = np.asarray([float(value) for value in lines[1].split()], dtype=np.float32)
+    if mean.shape != (4,) or scale.shape != (4,) or np.any(scale == 0.0):
+        raise ValueError("scaler.txt must contain four non-zero scale values")
+    return mean, scale
+
+
 def main():
     print("Loading ONNX model...")
 
@@ -26,9 +36,8 @@ def main():
         str(ONNX_PATH),
         providers=["CPUExecutionProvider"],
     )
-
     input_name = session.get_inputs()[0].name
-    scaler = torch.load(SCALER_PATH, map_location="cpu")
+    mean, scale = load_scaler()
 
     raw_sensor_features = np.array(
         [
@@ -44,9 +53,7 @@ def main():
         dtype=np.float32,
     )
 
-    sensor_features = (
-        raw_sensor_features - np.asarray(scaler["mean"], dtype=np.float32)
-    ) / np.asarray(scaler["scale"], dtype=np.float32)
+    sensor_features = (raw_sensor_features - mean) / scale
 
     print(f"Input: {input_name}")
     print(f"Sensor streams: {NUM_SENSORS}")
