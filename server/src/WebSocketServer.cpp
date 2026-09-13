@@ -1,7 +1,5 @@
 #include "WebSocketServer.hpp"
 
-#define ASIO_STANDALONE
-
 #include <atomic>
 #include <iostream>
 #include <mutex>
