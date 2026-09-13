@@ -26,14 +26,12 @@ add_executable(edgesense
 )
 
 # WebSocket++ 0.8.2 uses legacy constructor/destructor syntax that is
-# rejected by modern compilers in C++20 mode. The public EdgeSense engine
-# remains C++20; only the compatibility wrapper is compiled as C++17.
+# rejected by modern compilers in C++20 mode. Keep the application C++20,
+# but compile the isolated compatibility wrapper with C++17.
 set_source_files_properties(
     server/src/WebSocketServer.cpp
     PROPERTIES
-        CXX_STANDARD 17
-        CXX_STANDARD_REQUIRED ON
-        CXX_EXTENSIONS OFF
+        COMPILE_OPTIONS "-std=c++17"
 )
 
 target_include_directories(edgesense PRIVATE
