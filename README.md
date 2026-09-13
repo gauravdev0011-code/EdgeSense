@@ -1,13 +1,16 @@
 # EdgeSense — Real-Time Edge AI Sensor Fusion & Anomaly Detection
 
-EdgeSense is a real-time edge-AI pipeline that coordinates **8 simulated sensor streams** through concurrent ingestion, buffering, feature extraction, and ML inference. It combines a multithreaded C++20 data path with PyTorch/ONNX Runtime inference, WebSocket telemetry, and a React dashboard.
+EdgeSense is a real-time edge-AI pipeline that coordinates **8 simulated sensor streams** through concurrent ingestion, buffering, feature extraction, and ML inference. It combines a multithreaded C++20 data path with PyTorch/ONNX Runtime inference, WebSocket telemetry, Linux process metrics, and a React dashboard.
 
-## Resume-Aligned Summary
+[![CI](https://github.com/gauravdev0011-code/EdgeSense/actions/workflows/ci.yml/badge.svg)](https://github.com/gauravdev0011-code/EdgeSense/actions/workflows/ci.yml)
 
-- Engineered a **multithreaded C++20 pipeline for 8 simulated sensor streams**, coordinating concurrent ingestion, buffering, feature extraction, and ML inference.
-- Integrated **PyTorch and ONNX Runtime** for edge inference; benchmarked inference throughput and **p95 latency across 8-stream workloads**.
-- Built real-time **WebSocket telemetry** and a React dashboard for sensor streams, inference latency, resource utilization, and anomaly scores.
-- Evaluated **10K+ labeled sensor windows** using precision, recall, F1, false-positive rate, and false-negative rate.
+## What it demonstrates
+
+- **Concurrent systems:** 8 sensor streams are ingested through independent C++ threads and a thread-safe queue.
+- **ML inference:** a PyTorch model is exported to ONNX and executed from the native C++ path with ONNX Runtime.
+- **Real-time telemetry:** sensor features, anomaly scores, processing latency, CPU utilization, and memory RSS are streamed over WebSockets.
+- **Observability:** the React dashboard exposes pipeline state, tail latency, model confidence, and process resource usage.
+- **Evaluation:** 10K+ labeled sensor windows are evaluated with precision, recall, F1, false-positive rate, and false-negative rate.
 
 ## Architecture
 
@@ -15,32 +18,35 @@ EdgeSense is a real-time edge-AI pipeline that coordinates **8 simulated sensor 
 8 simulated sensor streams
         |
         v
-Threaded ingestion -> thread-safe queue -> timestamp synchronization
+Concurrent ingestion -> thread-safe queue -> timestamp synchronization
         |
         v
 Feature extraction -> scaler -> ONNX Runtime inference
         |
-        +---------------------> WebSocket telemetry :9002
-                                      |
-                                      v
-                                 React dashboard
+        +--------------------------> WebSocket telemetry :9002
+        |                              |
+        |                              v
+        |                         React dashboard
+        |
+        +--------------------------> Linux process metrics
+                                      CPU + RSS
 ```
 
 ## Repository Layout
 
 ```text
 EdgeSense/
-├── engine/
-├── server/
-├── frontend/
-├── ml/
+├── engine/                 # C++20 sensor pipeline and inference path
+├── server/                 # WebSocket telemetry server
+├── frontend/               # React + Recharts dashboard
+├── ml/                     # training, evaluation, ONNX export/benchmark
 │   ├── data/sensor_data.csv
 │   ├── train_model.py
 │   ├── evaluate_model.py
 │   ├── export_onnx.py
 │   ├── benchmark_onnx.py
 │   └── requirements.txt
-├── third_party/
+├── third_party/            # pinned ONNX Runtime Linux dependency
 ├── CMakeLists.txt
 └── README.md
 ```
@@ -55,7 +61,7 @@ The labeled dataset contains four sensor features and a binary anomaly label:
 - acceleration
 - label
 
-The evaluation workflow operates on the repository's **10K+ labeled sensor windows** and reports accuracy, precision, recall, F1, false-positive rate, false-negative rate, and the confusion matrix.
+The evaluation workflow operates on the repository's **10K+ labeled sensor windows** and reports accuracy, precision, recall, F1, false-positive rate, false-negative rate, and a confusion matrix.
 
 Training uses `StandardScaler`; the same preprocessing parameters are persisted for native C++ inference so training and deployed inference use consistent feature normalization.
 
@@ -77,7 +83,7 @@ python export_onnx.py
 python benchmark_onnx.py
 ```
 
-The ONNX benchmark runs an **8-stream workload** and reports p50/p95/p99 inference latency and estimated sensor-vector throughput. The resume's performance figures are environment-specific measurements and should be reproduced on the target machine before being quoted independently.
+The ONNX benchmark runs an **8-stream workload** and reports p50/p95/p99 inference latency and estimated sensor-vector throughput. Performance figures are environment-specific measurements and should be reproduced on the target machine before being quoted independently.
 
 ## Native Build
 
@@ -93,17 +99,19 @@ cmake --build build -j
 ./build/edgesense
 ```
 
-The C++ process starts the WebSocket server on port `9002` and broadcasts JSON telemetry containing sensor features, anomaly probability, anomaly status, and pipeline processing time.
+The C++ process starts the WebSocket server on port `9002` and broadcasts JSON telemetry containing sensor features, anomaly probability, anomaly status, pipeline processing time, CPU utilization, and memory RSS.
 
 ## Frontend
 
 ```bash
 cd frontend
-npm install
+npm ci
+npm run lint
+npm run build
 npm run dev
 ```
 
-The React dashboard connects to `ws://localhost:9002` and displays live sensor streams, anomaly status, ONNX inference output, pipeline processing time, and connection status.
+The React dashboard connects to `ws://localhost:9002` and displays live sensor signals, anomaly status, ONNX inference output, pipeline processing time, CPU utilization, memory RSS, and connection health.
 
 ## Engineering Details
 
@@ -119,22 +127,30 @@ Timestamp-based grouping keeps downstream feature extraction operating on cohere
 
 The PyTorch model is exported to ONNX. The C++ inference path applies the saved training scaler before passing the four-feature vector to ONNX Runtime.
 
+### Process telemetry
+
+On Linux, the runtime reports process CPU utilization from `getrusage()` deltas and resident memory from `/proc/self/status`. These values are emitted with each telemetry cycle and rendered by the dashboard.
+
 ### Telemetry
 
 The C++ server maintains connected WebSocket clients and broadcasts JSON telemetry for each processing cycle. The React frontend consumes those messages through the browser WebSocket API.
 
 ## Validation and Benchmarking
 
-| Metric | Resume-aligned workload |
+| Metric | Workload / output |
 |---|---:|
 | Simulated sensor streams | **8** |
 | Labeled sensor windows | **10K+** |
-| ML evaluation metrics | **Precision, recall, F1, FPR, FNR** |
-| Runtime metrics | **Throughput, p50, p95, p99 latency** |
+| ML evaluation | **Precision, recall, F1, FPR, FNR** |
+| Runtime observability | **Throughput, p50, p95, p99, CPU, RSS** |
+
+## CI
+
+GitHub Actions builds the native C++ pipeline and validates the frontend with dependency installation, linting, and a production build on every push and pull request.
 
 ## Project Status
 
-The core sensor-processing, ML, inference, WebSocket, and dashboard path is implemented. Further work includes broader sensor models, stronger automated test coverage, and deployment hardening.
+The core sensor-processing, ML, inference, WebSocket, process-observability, and dashboard path is implemented. Further work includes broader sensor models, stronger automated test coverage, and deployment hardening.
 
 ## Author
 
