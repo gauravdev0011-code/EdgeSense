@@ -19,6 +19,7 @@ ML_DIR = Path(__file__).resolve().parent
 DATA_PATH = ML_DIR / "data" / "sensor_data.csv"
 MODEL_PATH = ML_DIR / "anomaly_model.pt"
 SCALER_PATH = ML_DIR / "scaler.pt"
+SCALER_TEXT_PATH = ML_DIR / "scaler.txt"
 
 FEATURES = [
     "temperature",
@@ -137,9 +138,16 @@ def main():
         SCALER_PATH,
     )
 
+    with SCALER_TEXT_PATH.open("w", encoding="utf-8") as scaler_file:
+        scaler_file.write(" ".join(f"{value:.17g}" for value in scaler.mean_))
+        scaler_file.write("\n")
+        scaler_file.write(" ".join(f"{value:.17g}" for value in scaler.scale_))
+        scaler_file.write("\n")
+
     print("\nSaved:")
     print(f"  {MODEL_PATH}")
     print(f"  {SCALER_PATH}")
+    print(f"  {SCALER_TEXT_PATH}")
 
 
 if __name__ == "__main__":
