@@ -1,15 +1,42 @@
 #include "InferenceEngine.hpp"
 
 #include <array>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 
 namespace edgesense {
 
-InferenceEngine::InferenceEngine(const std::string& modelPath)
+InferenceEngine::InferenceEngine(
+    const std::string& modelPath,
+    const std::string& scalerPath
+)
     : env(ORT_LOGGING_LEVEL_WARNING, "EdgeSense"),
       sessionOptions(),
       session(nullptr) {
+
+    std::ifstream scalerFile(scalerPath);
+    if (!scalerFile) {
+        throw std::runtime_error(
+            "Unable to open scaler file: " + scalerPath
+        );
+    }
+
+    for (std::size_t i = 0; i < mean.size(); ++i) {
+        if (!(scalerFile >> mean[i])) {
+            throw std::runtime_error(
+                "Invalid scaler mean values in: " + scalerPath
+            );
+        }
+    }
+
+    for (std::size_t i = 0; i < scale.size(); ++i) {
+        if (!(scalerFile >> scale[i]) || scale[i] == 0.0F) {
+            throw std::runtime_error(
+                "Invalid scaler scale values in: " + scalerPath
+            );
+        }
+    }
 
     sessionOptions.SetIntraOpNumThreads(1);
     sessionOptions.SetInterOpNumThreads(1);
@@ -27,7 +54,6 @@ InferenceEngine::InferenceEngine(const std::string& modelPath)
 
     auto inputNameAllocated =
         session.GetInputNameAllocated(0, allocator);
-
     auto outputNameAllocated =
         session.GetOutputNameAllocated(0, allocator);
 
@@ -40,15 +66,19 @@ InferenceEngine::InferenceEngine(const std::string& modelPath)
 }
 
 float InferenceEngine::predict(const SensorFeatures& features) {
-
-    std::array<float, 4> inputValues = {
+    const std::array<float, 4> rawValues = {
         static_cast<float>(features.temperature),
         static_cast<float>(features.vibration),
         static_cast<float>(features.current),
         static_cast<float>(features.acceleration)
     };
 
-    std::array<int64_t, 2> inputShape = {1, 4};
+    std::array<float, 4> inputValues{};
+    for (std::size_t i = 0; i < inputValues.size(); ++i) {
+        inputValues[i] = (rawValues[i] - mean[i]) / scale[i];
+    }
+
+    const std::array<int64_t, 2> inputShape = {1, 4};
 
     Ort::MemoryInfo memoryInfo =
         Ort::MemoryInfo::CreateCpu(
@@ -65,13 +95,8 @@ float InferenceEngine::predict(const SensorFeatures& features) {
             inputShape.size()
         );
 
-    const char* inputNames[] = {
-        inputName.c_str()
-    };
-
-    const char* outputNames[] = {
-        outputName.c_str()
-    };
+    const char* inputNames[] = {inputName.c_str()};
+    const char* outputNames[] = {outputName.c_str()};
 
     auto outputTensors = session.Run(
         Ort::RunOptions{nullptr},
@@ -82,8 +107,7 @@ float InferenceEngine::predict(const SensorFeatures& features) {
         1
     );
 
-    if (outputTensors.empty() ||
-        !outputTensors[0].IsTensor()) {
+    if (outputTensors.empty() || !outputTensors[0].IsTensor()) {
         throw std::runtime_error(
             "ONNX inference returned an invalid output."
         );
