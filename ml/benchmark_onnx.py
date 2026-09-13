@@ -3,10 +3,12 @@ from pathlib import Path
 
 import numpy as np
 import onnxruntime as ort
+import torch
 
 
 ML_DIR = Path(__file__).resolve().parent
 ONNX_PATH = ML_DIR / "anomaly_model.onnx"
+SCALER_PATH = ML_DIR / "scaler.pt"
 
 NUM_SENSORS = 8
 NUM_WARMUP_RUNS = 100
@@ -22,17 +24,13 @@ def main():
 
     session = ort.InferenceSession(
         str(ONNX_PATH),
-        providers=["CPUExecutionProvider"]
+        providers=["CPUExecutionProvider"],
     )
 
     input_name = session.get_inputs()[0].name
+    scaler = torch.load(SCALER_PATH, map_location="cpu")
 
-    # Each row represents one sensor's four extracted features:
-    #
-    # temperature, vibration, current, acceleration
-    #
-    # Eight rows represent the eight sensor streams.
-    sensor_features = np.array(
+    raw_sensor_features = np.array(
         [
             [70.0, 0.2, 10.0, 0.3],
             [71.0, 0.1, 10.5, 0.2],
@@ -43,49 +41,37 @@ def main():
             [70.7, 0.3, 10.4, 0.4],
             [70.1, 0.2, 10.0, 0.2],
         ],
-        dtype=np.float32
+        dtype=np.float32,
     )
+
+    sensor_features = (
+        raw_sensor_features - np.asarray(scaler["mean"], dtype=np.float32)
+    ) / np.asarray(scaler["scale"], dtype=np.float32)
 
     print(f"Input: {input_name}")
     print(f"Sensor streams: {NUM_SENSORS}")
     print(f"Warmup runs: {NUM_WARMUP_RUNS}")
     print(f"Benchmark runs: {NUM_BENCHMARK_RUNS}")
 
-    # Verify the expected workload size.
     if sensor_features.shape != (NUM_SENSORS, 4):
         raise ValueError(
-            f"Expected ({NUM_SENSORS}, 4) input, "
-            f"got {sensor_features.shape}"
+            f"Expected ({NUM_SENSORS}, 4) input, got {sensor_features.shape}"
         )
 
-    # Warm up the ONNX Runtime session.
     for _ in range(NUM_WARMUP_RUNS):
-        session.run(
-            None,
-            {input_name: sensor_features}
-        )
+        session.run(None, {input_name: sensor_features})
 
     latencies_ms = []
 
-    print("\nRunning 8-sensor benchmark...")
-
     for _ in range(NUM_BENCHMARK_RUNS):
         start = time.perf_counter()
-
-        session.run(
-            None,
-            {input_name: sensor_features}
-        )
-
+        session.run(None, {input_name: sensor_features})
         end = time.perf_counter()
+        latencies_ms.append((end - start) * 1000.0)
 
-        latency_ms = (end - start) * 1000.0
-        latencies_ms.append(latency_ms)
-
-    latencies = np.array(latencies_ms)
+    latencies = np.asarray(latencies_ms)
 
     print("\n=== EdgeSense 8-Sensor ONNX Runtime Benchmark ===")
-
     print(f"Sensor streams : {NUM_SENSORS}")
     print(f"Runs           : {len(latencies)}")
     print(f"Min            : {latencies.min():.4f} ms")
@@ -96,11 +82,7 @@ def main():
     print(f"Max            : {latencies.max():.4f} ms")
 
     throughput = NUM_SENSORS / (latencies.mean() / 1000.0)
-
-    print(f"\nEstimated sensor inference throughput: "
-          f"{throughput:.2f} sensor vectors/second")
-
-    print("\nBenchmark complete.")
+    print(f"\nEstimated sensor inference throughput: {throughput:.2f} sensor vectors/second")
 
 
 if __name__ == "__main__":
